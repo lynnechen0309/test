@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>公司報帳記錄器 (UMD Version)</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Noto Sans TC', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fade-in 0.5s ease-out forwards; }
+        
+        /* Calculator Specific Styles */
+        .calc-btn { transition: all 0.1s; }
+        .calc-btn:active { transform: scale(0.95); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyAJ_b9BiX1zT7WFu8f08uoKxeV8vgDUHz4",
+            authDomain: "fuktrip.firebaseapp.com",
+            projectId: "fuktrip",
+            storageBucket: "fuktrip.firebasestorage.app",
+            messagingSenderId: "663462561018",
+            appId: "1:663462561018:web:d0c9f00c9fed0253a2b543",
+            measurementId: "G-KME94X3EKH"
+        };
+
+        // Initialize Firebase (Compat syntax)
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.firestore();
+        const auth = firebase.auth();
+        const DOC_ID = "company_records"; 
+        const COLLECTION_NAME = "expense_tracker";
+
+        // --- Icon Components (Inline SVG) ---
+        const Icon = ({ path, size = 20, className = "" }) => (
+            <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width={size} 
+                height={size} 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className={className}
+            >
+                {path}
+            </svg>
+        );
+
+        const Icons = {
+            Smartphone: (props) => <Icon path={<><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></>} {...props} />,
+            Bus: (props) => <Icon path={<><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><path d="M9 18h5"/><circle cx="17" cy="18" r="2"/></>} {...props} />,
+            Car: (props) => <Icon path={<><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></>} {...props} />,
+            MoreHorizontal: (props) => <Icon path={<><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></>} {...props} />,
+            CheckCircle2: (props) => <Icon path={<><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></>} {...props} />,
+            Circle: (props) => <Icon path={<circle cx="12" cy="12" r="10"/>} {...props} />,
+            Plus: (props) => <Icon path={<><path d="M5 12h14"/><path d="M12 5v14"/></>} {...props} />,
+            Trash2: (props) => <Icon path={<><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></>} {...props} />,
+            ChevronDown: (props) => <Icon path={<path d="m6 9 6 6 6-6"/>} {...props} />,
+            ChevronUp: (props) => <Icon path={<path d="m18 15-6-6-6 6"/>} {...props} />,
+            DollarSign: (props) => <Icon path={<><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></>} {...props} />,
+            CreditCard: (props) => <Icon path={<><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></>} {...props} />,
+            PieChart: (props) => <Icon path={<><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></>} {...props} />,
+            Wallet: (props) => <Icon path={<><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></>} {...props} />,
+            GripVertical: (props) => <Icon path={<><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></>} {...props} />,
+            Calculator: (props) => <Icon path={<><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></>} {...props} />,
+            X: (props) => <Icon path={<><path d="M18 6 6 18"/><path d="m6 6 12 12"/></>} {...props} />,
+            Delete: (props) => <Icon path={<><path d="M20 5H9l-7 7 7 7h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2Z"/><line x1="18" x2="12" y1="9" y2="15"/><line x1="12" x2="18" y1="9" y2="15"/></>} {...props} />,
+            RotateCcw: (props) => <Icon path={<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />} {...props} />,
+            Pencil: (props) => <Icon path={<><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></>} {...props} />,
+            Check: (props) => <Icon path={<polyline points="20 6 9 17 4 12" />} {...props} />,
+        };
+
+        // --- Calculator Component ---
+        const Calculator = ({ onClose }) => {
+            const [display, setDisplay] = React.useState('0');
+            const [prevValue, setPrevValue] = React.useState(null);
+            const [operator, setOperator] = React.useState(null);
+            const [waitingForOperand, setWaitingForOperand] = React.useState(false);
+
+            const inputDigit = (digit) => {
+                if (waitingForOperand) {
+                    setDisplay(String(digit));
+                    setWaitingForOperand(false);
+                } else {
+                    setDisplay(display === '0' ? String(digit) : display + digit);
+                }
+            };
+
+            const inputDot = () => {
+                if (waitingForOperand) {
+                    setDisplay('0.');
+                    setWaitingForOperand(false);
+                } else if (display.indexOf('.') === -1) {
+                    setDisplay(display + '.');
+                }
+            };
+
+            const clearDisplay = () => {
+                setDisplay('0');
+                setPrevValue(null);
+                setOperator(null);
+                setWaitingForOperand(false);
+            };
+
+            const deleteLast = () => {
+                if (waitingForOperand) return;
+                if (display.length === 1) {
+                    setDisplay('0');
+                } else {
+                    setDisplay(display.slice(0, -1));
+                }
+            };
+
+            const performOperation = (nextOperator) => {
+                const inputValue = parseFloat(display);
+
+                if (prevValue === null) {
+                    setPrevValue(inputValue);
+                } else if (operator) {
+                    const currentValue = prevValue || 0;
+                    const newValue = calculate(currentValue, inputValue, operator);
+                    setPrevValue(newValue);
+                    setDisplay(String(newValue));
+                }
+
+                setWaitingForOperand(true);
+                setOperator(nextOperator);
+            };
+
+            const calculate = (prev, next, op) => {
+                switch(op) {
+                    case '+': return prev + next;
+                    case '-': return prev - next;
+                    case '*': return prev * next;
+                    case '/': return prev / next;
+                    case '=': return next;
+                    default: return next;
+                }
+            };
+            
+            const handlePercent = () => {
+                const currentValue = parseFloat(display);
+                if (currentValue === 0) return;
+                const newValue = parseFloat(display) / 100;
+                setDisplay(String(newValue));
+            };
+
+            // Keyboard Support
+            React.useEffect(() => {
+                const handleKeyDown = (e) => {
+                    const key = e.key;
+                    if (e.ctrlKey || e.metaKey || e.altKey) return;
+                    
+                    if (/^[0-9]$/.test(key)) {
+                        e.preventDefault();
+                        inputDigit(parseInt(key, 10));
+                    } else if (['+', '-', '*', '/'].includes(key)) {
+                        e.preventDefault();
+                        performOperation(key);
+                    } else if (key === '.' || key === ',') {
+                        e.preventDefault();
+                        inputDot();
+                    } else if (key === 'Enter' || key === '=') {
+                        e.preventDefault();
+                        performOperation('=');
+                    } else if (key === 'Backspace') {
+                        e.preventDefault();
+                        deleteLast();
+                    } else if (key === 'Delete' || key.toLowerCase() === 'c') {
+                        e.preventDefault();
+                        clearDisplay();
+                    } else if (key === 'Escape') {
+                        e.preventDefault();
+                        onClose();
+                    }
+                };
+
+                window.addEventListener('keydown', handleKeyDown);
+                return () => window.removeEventListener('keydown', handleKeyDown);
+            }); 
+
+            return (
+                <div className="bg-white/90 backdrop-blur-xl p-5 rounded-3xl shadow-2xl border border-white/50 w-80 animate-in select-none" onClick={e => e.stopPropagation()}>
+                    {/* Header */}
+                    <div className="flex justify-between items-center mb-4">
+                        <div className="flex items-center gap-2 text-slate-500">
+                            <Icons.Calculator size={18} />
+                            <span className="text-xs font-bold uppercase tracking-wider">Calculator</span>
+                        </div>
+                        <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-100">
+                            <Icons.X size={18} />
+                        </button>
+                    </div>
+
+                    {/* Display */}
+                    <div className="bg-slate-50 rounded-2xl p-4 mb-4 text-right border border-slate-200/50 shadow-inner">
+                        <div className="text-xs text-slate-400 min-h-[1.2em] mb-1">
+                            {prevValue !== null && operator && operator !== '=' ? `${parseFloat(prevValue).toLocaleString()} ${operator}` : ''}
+                        </div>
+                        <div className="text-3xl font-mono font-medium text-slate-800 truncate tracking-tight">
+                            {parseFloat(display).toLocaleString('en-US', { maximumFractionDigits: 6 })}{display.endsWith('.') ? '.' : ''}
+                        </div>
+                    </div>
+
+                    {/* Keypad */}
+                    <div className="grid grid-cols-4 gap-3">
+                        <button onClick={clearDisplay} className="calc-btn col-span-2 p-3 rounded-xl bg-red-50 text-red-500 font-bold text-sm hover:bg-red-100">AC</button>
+                        <button onClick={deleteLast} className="calc-btn p-3 rounded-xl bg-slate-100 text-slate-600 font-bold hover:bg-slate-200"><Icons.Delete size={18} className="mx-auto"/></button>
+                        <button onClick={() => performOperation('/')} className="calc-btn p-3 rounded-xl bg-indigo-50 text-indigo-600 font-bold text-lg hover:bg-indigo-100">÷</button>
+                        
+                        <button onClick={() => inputDigit(7)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">7</button>
+                        <button onClick={() => inputDigit(8)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">8</button>
+                        <button onClick={() => inputDigit(9)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">9</button>
+                        <button onClick={() => performOperation('*')} className="calc-btn p-3 rounded-xl bg-indigo-50 text-indigo-600 font-bold text-lg hover:bg-indigo-100">×</button>
+                        
+                        <button onClick={() => inputDigit(4)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">4</button>
+                        <button onClick={() => inputDigit(5)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">5</button>
+                        <button onClick={() => inputDigit(6)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">6</button>
+                        <button onClick={() => performOperation('-')} className="calc-btn p-3 rounded-xl bg-indigo-50 text-indigo-600 font-bold text-lg hover:bg-indigo-100">−</button>
+                        
+                        <button onClick={() => inputDigit(1)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">1</button>
+                        <button onClick={() => inputDigit(2)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">2</button>
+                        <button onClick={() => inputDigit(3)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">3</button>
+                        <button onClick={() => performOperation('+')} className="calc-btn p-3 rounded-xl bg-indigo-50 text-indigo-600 font-bold text-lg hover:bg-indigo-100">+</button>
+                        
+                        <button onClick={handlePercent} className="calc-btn p-3 rounded-xl bg-slate-100 text-slate-600 font-bold text-lg hover:bg-slate-200">%</button>
+                        <button onClick={() => inputDigit(0)} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">0</button>
+                        <button onClick={inputDot} className="calc-btn p-3 rounded-xl bg-white border border-slate-100 text-slate-700 font-bold text-lg hover:bg-slate-50 shadow-sm">.</button>
+                        <button onClick={() => performOperation('=')} className="calc-btn p-3 rounded-xl bg-indigo-600 text-white font-bold text-lg hover:bg-indigo-700 shadow-lg shadow-indigo-200">=</button>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Main Component ---
+        const ExpenseTracker = () => {
+            const [activeTab, setActiveTab] = React.useState('phone');
+            const [isLoading, setIsLoading] = React.useState(true);
+            const [isSaving, setIsSaving] = React.useState(false);
+            const [user, setUser] = React.useState(null);
+            
+            // New state for calculator visibility
+            const [showCalculator, setShowCalculator] = React.useState(false);
+
+            // Edit State
+            const [editingId, setEditingId] = React.useState(null);
+            const [editFormData, setEditFormData] = React.useState({});
+
+            // Initial Data Structure
+            const defaultData = {
+                phone: Array(12).fill({ submitted: false, received: false }),
+                transport: Array(12).fill({ cost: '', submitted: false, received: false }),
+                taxi: Array(12).fill({ trips: [], submitted: false, received: false }),
+                others: [],
+                taxiOrder: (() => {
+                    const currentMonth = new Date().getMonth();
+                    const order = [currentMonth];
+                    for (let i = 0; i < 12; i++) {
+                        if (i !== currentMonth) order.push(i);
+                    }
+                    return order;
+                })()
+            };
+
+            const [data, setData] = React.useState(defaultData);
+
+            // 1. Auth & Realtime Listener
+            React.useEffect(() => {
+                auth.signInAnonymously().catch((error) => {
+                    console.error("Auth Error:", error);
+                });
+
+                const unsubscribeAuth = auth.onAuthStateChanged((currentUser) => {
+                    setUser(currentUser);
+                    if (currentUser) {
+                        const docRef = db.collection(COLLECTION_NAME).doc(DOC_ID);
+                        
+                        const unsubscribeSnapshot = docRef.onSnapshot((docSnap) => {
+                            if (docSnap.exists) {
+                                const remoteData = docSnap.data();
+                                if (!remoteData.taxiOrder) {
+                                    remoteData.taxiOrder = defaultData.taxiOrder;
+                                }
+                                setData(remoteData);
+                            } else {
+                                docRef.set(defaultData);
+                                setData(defaultData);
+                            }
+                            setIsLoading(false);
+                        });
+                        return () => unsubscribeSnapshot();
+                    }
+                });
+
+                return () => unsubscribeAuth();
+            }, []);
+
+            // 2. Save Data to Firestore
+            const saveDataToFirebase = async (newData) => {
+                if (!user) return;
+                setIsSaving(true);
+                try {
+                    await db.collection(COLLECTION_NAME).doc(DOC_ID).set(newData, { merge: true });
+                } catch (e) {
+                    console.error("Save error:", e);
+                } finally {
+                    setTimeout(() => setIsSaving(false), 500);
+                }
+            };
+
+            const updateData = (newData) => {
+                setData(newData);
+                saveDataToFirebase(newData);
+            };
+
+            const months = Array.from({ length: 12 }, (_, i) => `${i + 1}月`);
+
+            // --- Morandi Theme Configuration ---
+            const themes = {
+                phone: {
+                    id: 'phone',
+                    name: '手機費',
+                    bg: 'bg-slate-50',
+                    bgGradient: 'from-slate-100 to-slate-200',
+                    primary: 'text-slate-600',
+                    accent: 'bg-slate-200',
+                    border: 'border-slate-200',
+                    ring: 'focus:ring-slate-400',
+                    button: 'bg-slate-600 hover:bg-slate-700',
+                    lightButton: 'bg-slate-100 text-slate-600',
+                    activeTab: 'bg-slate-600 text-white shadow-slate-300',
+                    cardBorder: 'hover:border-slate-300',
+                    checkbox: { submit: 'bg-slate-400 border-slate-400', receive: 'bg-slate-600 border-slate-600' },
+                    icon: Icons.Smartphone
+                },
+                transport: {
+                    id: 'transport',
+                    name: '林口交通',
+                    bg: 'bg-[#F2F7F5]',
+                    bgGradient: 'from-[#E0ECE9] to-[#D1E2DD]',
+                    primary: 'text-[#4A665A]',
+                    accent: 'bg-[#B8C9C1]',
+                    border: 'border-[#CADED6]',
+                    ring: 'focus:ring-[#7B9E8F]',
+                    button: 'bg-[#5D8072] hover:bg-[#4A665A]',
+                    lightButton: 'bg-[#E0ECE9] text-[#4A665A]',
+                    activeTab: 'bg-[#5D8072] text-white shadow-[#B8C9C1]',
+                    cardBorder: 'hover:border-[#7B9E8F]',
+                    checkbox: { submit: 'bg-[#7B9E8F] border-[#7B9E8F]', receive: 'bg-[#4A665A] border-[#4A665A]' },
+                    icon: Icons.Bus
+                },
+                taxi: {
+                    id: 'taxi',
+                    name: '計程車費',
+                    bg: 'bg-[#FAF9F6]',
+                    bgGradient: 'from-[#F0EBE5] to-[#E6E0D8]',
+                    primary: 'text-[#7D7065]',
+                    accent: 'bg-[#D6CFC7]',
+                    border: 'border-[#E6E0D8]',
+                    ring: 'focus:ring-[#A89F91]',
+                    button: 'bg-[#8F8175] hover:bg-[#7D7065]',
+                    lightButton: 'bg-[#F0EBE5] text-[#7D7065]',
+                    activeTab: 'bg-[#8F8175] text-white shadow-[#D6CFC7]',
+                    cardBorder: 'hover:border-[#A89F91]',
+                    checkbox: { submit: 'bg-[#A89F91] border-[#A89F91]', receive: 'bg-[#7D7065] border-[#7D7065]' },
+                    icon: Icons.Car
+                },
+                others: {
+                    id: 'others',
+                    name: '其他費用',
+                    bg: 'bg-[#FDF7F8]', 
+                    bgGradient: 'from-[#FCEEF1] to-[#F2DEE4]',
+                    primary: 'text-[#8E6E77]',
+                    accent: 'bg-[#E3CDD3]',
+                    border: 'border-[#F2DEE4]',
+                    ring: 'focus:ring-[#C4A0AA]',
+                    button: 'bg-[#9D7985] hover:bg-[#8E6E77]',
+                    lightButton: 'bg-[#FCEEF1] text-[#8E6E77]',
+                    activeTab: 'bg-[#9D7985] text-white shadow-[#E3CDD3]',
+                    cardBorder: 'hover:border-[#C4A0AA]',
+                    checkbox: { submit: 'bg-[#C4A0AA] border-[#C4A0AA]', receive: 'bg-[#9D7985] border-[#9D7985]' },
+                    icon: Icons.MoreHorizontal
+                }
+            };
+
+            const currentTheme = themes[activeTab];
+
+            // --- Logic Handlers ---
+            const togglePhoneStatus = (index, field) => {
+                const newData = { ...data };
+                newData.phone[index] = { ...newData.phone[index], [field]: !newData.phone[index][field] };
+                updateData(newData);
+            };
+            
+            const clearPhoneData = () => {
+                if(!confirm("確定要清除所有手機費記錄嗎？")) return;
+                const newData = { ...data };
+                newData.phone = Array(12).fill({ submitted: false, received: false });
+                updateData(newData);
+            };
+
+            const updateTransportCost = (index, value) => {
+                const newData = { ...data };
+                newData.transport[index] = { ...newData.transport[index], cost: value };
+                updateData(newData);
+            };
+
+            const toggleTransportStatus = (index, field) => {
+                const newData = { ...data };
+                newData.transport[index] = { ...newData.transport[index], [field]: !newData.transport[index][field] };
+                updateData(newData);
+            };
+
+            const clearTransportMonth = (index) => {
+                if(!confirm(`確定要清除 ${index + 1} 月的交通費記錄嗎？`)) return;
+                const newData = { ...data };
+                newData.transport[index] = { cost: '', submitted: false, received: false };
+                updateData(newData);
+            };
+
+            const [expandedTaxiMonth, setExpandedTaxiMonth] = React.useState(null);
+            const [newTrip, setNewTrip] = React.useState({ date: '', content: '', amount: '' });
+
+            const addTaxiTrip = (monthIndex) => {
+                if (!newTrip.date || !newTrip.amount) return;
+                const newData = { ...data };
+                newData.taxi[monthIndex].trips.push({ ...newTrip, id: Date.now() });
+                newData.taxi[monthIndex].trips.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+                updateData(newData);
+                setNewTrip({ date: '', content: '', amount: '' });
+            };
+
+            const removeTaxiTrip = (monthIndex, tripId) => {
+                const newData = { ...data };
+                newData.taxi[monthIndex].trips = newData.taxi[monthIndex].trips.filter(t => t.id !== tripId);
+                updateData(newData);
+            };
+
+            const toggleTaxiStatus = (monthIndex, field) => {
+                const newData = { ...data };
+                newData.taxi[monthIndex] = { ...newData.taxi[monthIndex], [field]: !newData.taxi[monthIndex][field] };
+                updateData(newData);
+            };
+
+            const clearTaxiMonth = (monthIndex) => {
+                if(!confirm(`確定要清除 ${monthIndex + 1} 月的所有計程車行程嗎？`)) return;
+                const newData = { ...data };
+                newData.taxi[monthIndex] = { trips: [], submitted: false, received: false };
+                updateData(newData);
+            };
+
+            const [newOther, setNewOther] = React.useState({ name: '', amount: '' });
+
+            // Helper to safe eval string
+            const safeCalculate = (val) => {
+                try {
+                    const str = String(val);
+                    // Remove characters that aren't digits or math operators
+                    const sanitized = str.replace(/[^-()\d/*+.]/g, '');
+                    // Use Function to evaluate safe math string
+                    const result = new Function('return ' + sanitized)();
+                    return isNaN(result) ? str : String(result);
+                } catch (e) {
+                    return String(val);
+                }
+            };
+
+            const addOtherItem = () => {
+                if (!newOther.name || !newOther.amount) return;
+                const calculatedAmount = safeCalculate(newOther.amount);
+                
+                const newData = { ...data };
+                newData.others.push({ ...newOther, amount: calculatedAmount, id: Date.now(), submitted: false, received: false });
+                updateData(newData);
+                setNewOther({ name: '', amount: '' });
+            };
+
+            const removeOtherItem = (id) => {
+                const newData = { ...data };
+                newData.others = newData.others.filter(item => item.id !== id);
+                updateData(newData);
+            };
+
+            const toggleOtherStatus = (id, field) => {
+                const newData = { ...data };
+                const index = newData.others.findIndex(item => item.id === id);
+                if (index !== -1) {
+                    newData.others[index][field] = !newData.others[index][field];
+                    updateData(newData);
+                }
+            };
+
+            // --- Edit Handlers ---
+            const startEdit = (item) => {
+                setEditingId(item.id);
+                setEditFormData({ ...item });
+            };
+
+            const cancelEdit = () => {
+                setEditingId(null);
+                setEditFormData({});
+            };
+
+            const handleEditFormChange = (field, value) => {
+                setEditFormData(prev => ({ ...prev, [field]: value }));
+            };
+
+            const saveTaxiEdit = (monthIndex) => {
+                const newData = { ...data };
+                const trips = newData.taxi[monthIndex].trips;
+                const tripIndex = trips.findIndex(t => t.id === editingId);
+                if (tripIndex > -1) {
+                    const calculatedAmount = safeCalculate(String(editFormData.amount));
+                    trips[tripIndex] = { ...editFormData, amount: calculatedAmount };
+                    trips.sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+                    updateData(newData);
+                }
+                cancelEdit();
+            };
+
+            const saveOtherEdit = () => {
+                const newData = { ...data };
+                const index = newData.others.findIndex(o => o.id === editingId);
+                if (index > -1) {
+                    const calculatedAmount = safeCalculate(String(editFormData.amount));
+                    newData.others[index] = { ...editFormData, amount: calculatedAmount };
+                    updateData(newData);
+                }
+                cancelEdit();
+            };
+
+            // Drag & Drop
+            const dragItem = React.useRef(null);
+            const dragOverItem = React.useRef(null);
+
+            const onDragStart = (e, position) => {
+                dragItem.current = position;
+                e.dataTransfer.effectAllowed = "move";
+            };
+
+            const onDragEnter = (e, position) => {
+                dragOverItem.current = position;
+            };
+
+            const onDragEnd = () => {
+                const copyOrder = [...data.taxiOrder];
+                const dragItemContent = copyOrder[dragItem.current];
+                copyOrder.splice(dragItem.current, 1);
+                copyOrder.splice(dragOverItem.current, 0, dragItemContent);
+                dragItem.current = null;
+                dragOverItem.current = null;
+                
+                const newData = { ...data, taxiOrder: copyOrder };
+                updateData(newData);
+            };
+
+            // --- UI Sub-Components ---
+            const Checkbox = ({ checked, onClick, label, type = 'submit' }) => {
+                const activeClass = type === 'submit' ? currentTheme.checkbox.submit : currentTheme.checkbox.receive;
+                const inactiveClass = `bg-white ${currentTheme.border} text-slate-300 hover:bg-white/80`;
+
+                return (
+                    <button 
+                        onClick={(e) => { e.stopPropagation(); onClick(); }}
+                        className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg transition-all duration-300 border text-sm font-medium w-full shadow-sm ${checked ? `${activeClass} text-white shadow-md` : inactiveClass}`}
+                    >
+                        {checked ? <Icons.CheckCircle2 size={16} className="shrink-0" /> : <Icons.Circle size={16} className="shrink-0" />}
+                        <span>{label}</span>
+                    </button>
+                );
+            };
+
+            const StatCard = ({ title, value, icon: IconComp }) => (
+                <div className={`bg-white/60 backdrop-blur-md p-4 rounded-2xl border border-white/60 shadow-sm flex items-center gap-4`}>
+                    <div className={`p-3 rounded-xl ${currentTheme.lightButton}`}>
+                        <IconComp size={20} />
+                    </div>
+                    <div>
+                        <p className="text-xs font-medium text-slate-400 uppercase tracking-wide">{title}</p>
+                        <p className={`text-lg font-bold ${currentTheme.primary}`}>{value}</p>
+                    </div>
+                </div>
+            );
+
+            if (isLoading) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                        <div className="flex flex-col items-center gap-4">
+                            <div className="w-12 h-12 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+                            <p className="text-indigo-600 font-medium animate-pulse">正在載入雲端資料...</p>
+                        </div>
+                    </div>
+                );
+            }
+
+            return (
+                <div className={`min-h-screen ${currentTheme.bg} font-sans pb-24 relative overflow-x-hidden transition-colors duration-700 ease-in-out`}>
+                    
+                    {/* Background Gradients */}
+                    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+                        <div className={`absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-gradient-to-br ${currentTheme.bgGradient} opacity-60 blur-3xl transition-all duration-1000 ease-in-out`}></div>
+                        <div className={`absolute top-[20%] -right-[10%] w-[60%] h-[60%] rounded-full bg-gradient-to-bl ${currentTheme.bgGradient} opacity-60 blur-3xl transition-all duration-1000 ease-in-out delay-100`}></div>
+                    </div>
+
+                    {/* Header */}
+                    <header className="sticky top-0 z-20 backdrop-blur-xl bg-white/40 border-b border-white/30 shadow-sm transition-all duration-500">
+                        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-18 flex items-center justify-between py-4">
+                            <div className="flex items-center gap-3">
+                                <div className={`text-white p-2.5 rounded-xl shadow-lg transition-colors duration-500 ${currentTheme.button}`}>
+                                    <Icons.Wallet size={24} />
+                                </div>
+                                <div>
+                                    <h1 className={`text-xl font-bold transition-colors duration-500 ${currentTheme.primary}`}>
+                                        公司報帳記錄器
+                                    </h1>
+                                    <p className="text-xs text-slate-400 font-medium tracking-wide">Firebase Cloud Sync</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5 px-3 py-1 bg-white/40 border border-white/50 rounded-full shadow-sm backdrop-blur-sm">
+                                    <div className={`w-2 h-2 rounded-full ${isSaving ? 'bg-orange-400 animate-ping' : 'bg-emerald-400'}`}></div>
+                                    <span className="text-xs font-semibold text-slate-500">{isSaving ? 'Saving...' : 'Synced'}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 relative z-10">
+                        
+                        {/* Tabs */}
+                        <nav className="flex space-x-2 bg-white/40 backdrop-blur-md p-1.5 rounded-2xl shadow-sm border border-white/40 mb-8 overflow-x-auto scrollbar-hide">
+                            {Object.values(themes).map((theme) => {
+                                const isActive = activeTab === theme.id;
+                                const IconComp = theme.icon;
+                                return (
+                                    <button
+                                        key={theme.id}
+                                        onClick={() => setActiveTab(theme.id)}
+                                        className={`flex items-center gap-2 px-4 md:px-6 py-3 rounded-xl text-sm font-bold transition-all duration-500 whitespace-nowrap flex-1 justify-center ${
+                                            isActive
+                                                ? `${theme.activeTab} shadow-lg ring-1 ring-black/5 transform scale-[1.02]`
+                                                : 'text-slate-400 hover:text-slate-600 hover:bg-white/50'
+                                        }`}
+                                    >
+                                        <IconComp size={18} />
+                                        {theme.name}
+                                    </button>
+                                );
+                            })}
+                        </nav>
+
+                        <div className="min-h-[500px]">
+                            {/* Phone View */}
+                            {activeTab === 'phone' && (
+                                <div className="animate-in">
+                                    <div className="flex justify-end mb-4">
+                                        <button 
+                                            onClick={clearPhoneData}
+                                            className="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-colors text-xs font-bold"
+                                        >
+                                            <Icons.Trash2 size={14} /> 全部重置
+                                        </button>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                                        {months.map((month, idx) => {
+                                            const isDone = data.phone[idx].submitted && data.phone[idx].received;
+                                            return (
+                                                <div key={idx} className={`relative bg-white/70 backdrop-blur-md rounded-2xl border border-white/60 transition-all duration-300 overflow-hidden group hover:shadow-lg hover:-translate-y-1 ${currentTheme.cardBorder}`}>
+                                                    {isDone && <div className={`absolute top-0 right-0 w-16 h-16 bg-gradient-to-br ${currentTheme.bgGradient} opacity-50 rounded-bl-full`} />}
+                                                    <div className="p-5 flex flex-col h-full">
+                                                        <div className="flex justify-between items-start mb-4">
+                                                            <span className={`text-xl font-bold ${isDone ? currentTheme.primary : 'text-slate-400'}`}>{month}</span>
+                                                            <Icons.Smartphone size={20} className={isDone ? currentTheme.primary : 'text-slate-300'} />
+                                                        </div>
+                                                        <div className="mt-auto grid grid-cols-1 gap-2">
+                                                            <Checkbox checked={data.phone[idx].submitted} onClick={() => togglePhoneStatus(idx, 'submitted')} label="報帳" type="submit" />
+                                                            <Checkbox checked={data.phone[idx].received} onClick={() => togglePhoneStatus(idx, 'received')} label="入帳" type="receive" />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Transport View */}
+                            {activeTab === 'transport' && (
+                                <div className="animate-in bg-white/70 backdrop-blur-md rounded-3xl shadow-sm border border-white/60 overflow-hidden">
+                                    <div className={`grid grid-cols-12 ${currentTheme.bg} border-b ${currentTheme.border} text-slate-400 text-xs font-bold uppercase tracking-wider py-4 px-6`}>
+                                        <div className="col-span-3 md:col-span-2">月份</div>
+                                        <div className="col-span-4 md:col-span-4">金額</div>
+                                        <div className="col-span-5 md:col-span-6 text-right md:text-center">狀態 / 操作</div>
+                                    </div>
+                                    <div className={`divide-y ${currentTheme.border}`}>
+                                        {months.map((_, originalIdx) => ({ idx: originalIdx, data: data.transport[originalIdx] }))
+                                            .sort((a, b) => Number(a.data.submitted) - Number(b.data.submitted) || a.idx - b.idx)
+                                            .map(({ idx, data: itemData }) => (
+                                                <div key={idx} className={`grid grid-cols-12 items-center px-6 py-4 transition-colors hover:bg-white/50 ${itemData.submitted ? 'opacity-60 bg-gray-50/50' : ''}`}>
+                                                    <div className={`col-span-3 md:col-span-2 font-bold ${currentTheme.primary}`}>{months[idx]}</div>
+                                                    <div className="col-span-4 md:col-span-4 pr-4">
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+                                                            <input type="number" placeholder="0" value={itemData.cost} onChange={(e) => updateTransportCost(idx, e.target.value)}
+                                                                className={`w-full pl-7 pr-3 py-2 bg-slate-50/50 border-0 rounded-lg focus:ring-2 ${currentTheme.ring} text-slate-700 font-semibold transition-all shadow-inner`} />
+                                                        </div>
+                                                    </div>
+                                                    <div className="col-span-5 md:col-span-6 flex flex-col md:flex-row items-end md:items-center justify-end md:justify-center gap-2">
+                                                        <div className="w-full md:w-28"><Checkbox checked={itemData.submitted} onClick={() => toggleTransportStatus(idx, 'submitted')} label="報帳" type="submit" /></div>
+                                                        <div className="w-full md:w-28"><Checkbox checked={itemData.received} onClick={() => toggleTransportStatus(idx, 'received')} label="入帳" type="receive" /></div>
+                                                        <button 
+                                                            onClick={() => clearTransportMonth(idx)}
+                                                            className="p-2 ml-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                            title="清除此月資料"
+                                                        >
+                                                            <Icons.Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Taxi View */}
+                            {activeTab === 'taxi' && (
+                                <div className="space-y-4 animate-in">
+                                    <div className="text-xs text-slate-400 text-center mb-2 italic">* 拖曳左側把手可調整順序 (預設當月置頂)</div>
+                                    {data.taxiOrder.map((monthIndex, orderIdx) => {
+                                        const isExpanded = expandedTaxiMonth === monthIndex;
+                                        const total = data.taxi[monthIndex].trips.reduce((sum, trip) => sum + (parseFloat(trip.amount) || 0), 0);
+                                        
+                                        return (
+                                            <div key={monthIndex} draggable onDragStart={(e) => onDragStart(e, orderIdx)} onDragEnter={(e) => onDragEnter(e, orderIdx)} onDragEnd={onDragEnd} onDragOver={(e) => e.preventDefault()}
+                                                className={`bg-white/70 backdrop-blur-md rounded-2xl border transition-all duration-300 overflow-hidden ${isExpanded ? `shadow-lg ${currentTheme.border} ring-1 ring-black/5` : `border-white/60 hover:border-[${currentTheme.border}]`} cursor-move`}>
+                                                <div className={`p-5 flex items-center justify-between transition-colors ${isExpanded ? currentTheme.bg : 'hover:bg-white/40'}`}>
+                                                    <div className="flex items-center gap-2 flex-1 cursor-pointer" onClick={() => setExpandedTaxiMonth(isExpanded ? null : monthIndex)}>
+                                                        <div className="text-slate-300 cursor-grab active:cursor-grabbing hover:text-slate-500 px-1" onMouseDown={(e) => e.stopPropagation()}><Icons.GripVertical size={20} /></div>
+                                                        <div className="flex items-center gap-5">
+                                                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-sm font-bold shadow-inner transition-colors ${total > 0 ? `${currentTheme.lightButton}` : 'bg-slate-100 text-slate-400'}`}>{months[monthIndex]}</div>
+                                                            <div className="flex flex-col gap-1">
+                                                                <span className="text-sm text-slate-400 font-medium">總計</span>
+                                                                <span className={`font-bold text-lg ${currentTheme.primary}`}>${total.toLocaleString()}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-4">
+                                                         <button 
+                                                            onClick={(e) => { e.stopPropagation(); clearTaxiMonth(monthIndex); }}
+                                                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                                            title="清除此月行程"
+                                                        >
+                                                            <Icons.Trash2 size={16} />
+                                                        </button>
+                                                        <div className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''} text-slate-400 cursor-pointer`} onClick={() => setExpandedTaxiMonth(isExpanded ? null : monthIndex)}><Icons.ChevronDown size={20} /></div>
+                                                    </div>
+                                                </div>
+                                                {isExpanded && (
+                                                    <div className={`p-5 border-t ${currentTheme.border} bg-white/30 cursor-default`}>
+                                                        <div className={`flex flex-col md:flex-row items-center justify-between mb-6 ${currentTheme.bg} p-4 rounded-xl border ${currentTheme.border}`}>
+                                                            <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 md:mb-0">月份狀態核銷</span>
+                                                            <div className="flex gap-3 w-full md:w-auto">
+                                                                <div className="w-1/2 md:w-32"><Checkbox checked={data.taxi[monthIndex].submitted} onClick={() => toggleTaxiStatus(monthIndex, 'submitted')} label="已報帳" type="submit" /></div>
+                                                                <div className="w-1/2 md:w-32"><Checkbox checked={data.taxi[monthIndex].received} onClick={() => toggleTaxiStatus(monthIndex, 'received')} label="已入帳" type="receive" /></div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-3 mb-8">
+                                                            {[...data.taxi[monthIndex].trips]
+                                                                .sort
